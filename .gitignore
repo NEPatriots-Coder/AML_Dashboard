@@ -1,0 +1,23 @@
+*.md
+!README.md
+
+# Local secrets and env
+.env
+secrets/
+
+# Local runtime data
+instance/
+
+# Python artifacts
+**/__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Tool logs
+.playwright-mcp/

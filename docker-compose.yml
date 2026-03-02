@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: asset_dashboard
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d asset_dashboard"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./secrets:/app/secrets:ro
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/asset_dashboard
+      SHEET_SOURCE: ${SHEET_SOURCE:-csv}
+      SHEET_SOURCE_FALLBACK: ${SHEET_SOURCE_FALLBACK:-csv}
+      ASSET_LOG_CSV_PATH: /app/US-LZL01 - ASSET MVMT LOG - ASSET MVMT LOG.csv
+      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+      GOOGLE_SHEET_NAME: ${GOOGLE_SHEET_NAME:-ASSET MVMT LOG}
+      GOOGLE_SHEET_GID: ${GOOGLE_SHEET_GID:-}
+      GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/service-account.json
+      GOOGLE_OAUTH_CLIENT_SECRET_FILE: /app/secrets/oauth_client.json
+      GOOGLE_OAUTH_TOKEN_FILE: /app/secrets/oauth_token.json
+      GOOGLE_OAUTH_INTERACTIVE: ${GOOGLE_OAUTH_INTERACTIVE:-false}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
+      ENABLE_BACKGROUND_SYNC: ${ENABLE_BACKGROUND_SYNC:-true}
+      SYNC_INTERVAL_SECONDS: ${SYNC_INTERVAL_SECONDS:-60}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    environment:
+      VITE_BACKEND_PROXY_TARGET: http://backend:8000
+    ports:
+      - "5180:5180"
+
+volumes:
+  postgres_data:
