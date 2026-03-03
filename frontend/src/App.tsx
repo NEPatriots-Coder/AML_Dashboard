@@ -55,25 +55,43 @@ export const App: FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [sourceStatus, setSourceStatus] = useState<SourceCheckResponse | null>(null);
 
+  const buildQueryParams = useCallback(
+    (filters: AppliedFilters, includePagination: boolean) => {
+      const params = new URLSearchParams();
+      const appendMulti = (key: string, raw: string) => {
+        raw
+          .split(",")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+          .forEach((value) => params.append(key, value));
+      };
+
+      if (filters.query) params.set("q", filters.query.trim());
+      appendMulti("bin", filters.bin);
+      appendMulti("movement_type", filters.movementType);
+      appendMulti("item", filters.item);
+      appendMulti("jira_ticket", filters.jiraTicket);
+      appendMulti("owner", filters.owner);
+      appendMulti("shipped_to_received_from", filters.shippedTo);
+      if (filters.forceRefresh) params.set("refresh", "true");
+
+      params.set("sort_by", sortBy);
+      params.set("sort_dir", sortDir);
+      if (includePagination) {
+        params.set("limit", String(limit));
+        params.set("offset", String(offset));
+      }
+      return params;
+    },
+    [limit, offset, sortBy, sortDir],
+  );
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      if (appliedFilters.query) params.set("q", appliedFilters.query);
-      if (appliedFilters.bin) params.set("bin", appliedFilters.bin);
-      if (appliedFilters.movementType) params.set("movement_type", appliedFilters.movementType);
-      if (appliedFilters.item) params.set("item", appliedFilters.item);
-      if (appliedFilters.jiraTicket) params.set("jira_ticket", appliedFilters.jiraTicket);
-      if (appliedFilters.owner) params.set("owner", appliedFilters.owner);
-      if (appliedFilters.shippedTo) params.set("shipped_to_received_from", appliedFilters.shippedTo);
-      if (appliedFilters.forceRefresh) params.set("refresh", "true");
-
-      params.set("sort_by", sortBy);
-      params.set("sort_dir", sortDir);
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
+      const params = buildQueryParams(appliedFilters, true);
 
       const [assetsResult, sourceResult] = await Promise.allSettled([
         fetchAssets(params),
@@ -108,7 +126,16 @@ export const App: FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [appliedFilters, limit, offset, selectedRow?._source_key, sortBy, sortDir]);
+  }, [appliedFilters, buildQueryParams, selectedRow?._source_key]);
+
+  const handleExport = useCallback(
+    (format: "html" | "csv") => {
+      const params = buildQueryParams(appliedFilters, false);
+      const url = `/api/assets/live/export.${format}?${params.toString()}`;
+      window.location.assign(url);
+    },
+    [appliedFilters, buildQueryParams],
+  );
 
   useEffect(() => {
     void loadRows();
@@ -248,6 +275,31 @@ export const App: FC = () => {
     return `${sourceStatus.source.toUpperCase()} source ${mode} · ${sourceStatus.source_count ?? 0} rows available${fallback}`;
   }, [sourceStatus]);
 
+  const sourceBadge = useMemo(() => {
+    if (!sourceStatus) {
+      return {
+        label: "CHECKING SOURCE",
+        className: "border-slate-300 bg-slate-100 text-slate-700",
+      };
+    }
+    if (!sourceStatus.ok) {
+      return {
+        label: "SOURCE DEGRADED",
+        className: "border-rose-300 bg-rose-50 text-rose-700",
+      };
+    }
+    if (sourceStatus.using_fallback) {
+      return {
+        label: "CSV FALLBACK",
+        className: "border-amber-300 bg-amber-50 text-amber-700",
+      };
+    }
+    return {
+      label: "LIVE GOOGLE",
+      className: "border-emerald-300 bg-emerald-50 text-emerald-700",
+    };
+  }, [sourceStatus]);
+
   const page = Math.floor(offset / limit) + 1;
   const pageCount = Math.max(1, Math.ceil(total / limit));
   const selectedKey = selectedRow ? String(selectedRow._source_key ?? "") : null;
@@ -265,6 +317,11 @@ export const App: FC = () => {
               />
               <div>
                 <h1 className="text-2xl font-semibold text-slate-900">Asset Movement Dashboard</h1>
+                <span
+                  className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${sourceBadge.className}`}
+                >
+                  {sourceBadge.label}
+                </span>
                 <p className="mt-1 text-sm text-slate-600">{headerSubtext}</p>
               </div>
             </div>
@@ -305,6 +362,8 @@ export const App: FC = () => {
           onRefreshToggle={setDraftForceRefresh}
           onSearch={applyDraftFilters}
           onClear={clearAllFilters}
+          onExportHtml={() => handleExport("html")}
+          onExportCsv={() => handleExport("csv")}
         />
 
         {activeFilterChips.length > 0 && (

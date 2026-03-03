@@ -66,3 +66,32 @@ def test_live_endpoint_pagination_metadata():
     assert body["sort_by"] == "date"
     assert body["sort_dir"] == "asc"
     assert body["total"] >= body["count"]
+
+
+def test_live_endpoint_multi_value_filter():
+    app = create_app(TestConfig)
+    client = app.test_client()
+
+    response = client.get("/api/assets/live?item=nonexistent&item=EAB-1002")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["count"] == 1
+
+
+def test_live_export_csv_and_html():
+    app = create_app(TestConfig)
+    client = app.test_client()
+
+    csv_res = client.get("/api/assets/live/export.csv?bin=storage")
+    assert csv_res.status_code == 200
+    assert "text/csv" in csv_res.content_type
+    assert "attachment; filename=" in csv_res.headers.get("Content-Disposition", "")
+    assert "bin" in csv_res.get_data(as_text=True).lower()
+
+    html_res = client.get("/api/assets/live/export.html?bin=storage")
+    assert html_res.status_code == 200
+    assert "text/html" in html_res.content_type
+    assert "attachment; filename=" in html_res.headers.get("Content-Disposition", "")
+    html_body = html_res.get_data(as_text=True).lower()
+    assert "<table>" in html_body
+    assert "asset search results" in html_body
